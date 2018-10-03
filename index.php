@@ -96,10 +96,24 @@
         margin-top: 5px;
 
     }
-    
+
     .new-elem {
-        color:green;
+        color: green;
         font-weight: 800;
+    }
+
+    .count_select {
+        font-size: 10pt;
+        color: lightgray;
+        font-weight: 800;
+    }
+
+    .hide_element {
+        font-style: italic;
+        font-size: 8pt;
+        color: blueviolet;
+        font-weight: 600;
+        cursor: pointer;
     }
 
 </style>
@@ -111,20 +125,24 @@
 
         <form action="">
             <a class="action">Выбрать все</a>
+            <p class="count_select"></p>
             <ul>
 
                 <?php
+                 function validateEmail($email) {
+                      return filter_var($email, FILTER_VALIDATE_EMAIL);
+                   }
                     global $wpdb;
 
-                    $wp_limi_forwards = $wpdb->get_results( "SELECT `id`,`pay_mail`,`player_name` FROM `wp_limi_forwards` group by `pay_mail` having count(*) > 1 " );
+                    $wp_limi_forwards = $wpdb->get_results( "SELECT `id`,`pay_mail`,`player_name` FROM `wp_limi_forwards` group by `pay_mail` having count(*) >= 1 " );
                     
                     foreach ($wp_limi_forwards as $data) {
                          $mail = $data->pay_mail;
                         $id = $data->id;
                         $name= $data->player_name;
-                        if (trim($mail)!="") {
+                        if (trim($mail)!=""&&validateEmail($mail)&&$mail[0]!="-") {
                        
-                        echo "<li><input type='checkbox'  value='$mail' name='pay_mail[]' >".$mail."[".$name."]</li>";
+                        echo "<li><input type='checkbox'  value='$mail' name='pay_mail[]' >".$mail."[".$name."] <a class='hide_element' data-value='$mail'>убрать</a></li>";
                         }
                     }
 
@@ -162,6 +180,31 @@
 
         $(document).ready(function() {
 
+            $("input[type='checkbox']").click(function() {
+                var selected_count = 0;
+                $("input[type='checkbox']").each(function(i, el) {
+                    if ($(el).is(':checked'))
+                        selected_count++;
+                });
+
+                $(".count_select").html("Выбрано:" + selected_count);
+            });
+
+            $(".hide_element").click(function() {
+                console.log("удаляем-с");
+                var hide_element = $(this).attr("data-value");
+                $.post("<?php echo plugin_dir_url( __FILE__ ).'remove.php';?>", {
+                    mail: hide_element
+                }, function(a, b) {
+                    console.log(a);
+                    $("input[value='" + a + "']~a").css({
+                        "color": "red",
+                        "font-weight": "800"
+                    });
+                    $("input[value='" + a + "']~a").html("убрано!");
+                });
+            });
+
             $(".action").click(function() {
 
                 if ($(this).attr("selected") == false || $(this).attr("selected") == undefined) {
@@ -171,35 +214,46 @@
                     $(this).attr({
                         "selected": true
                     });
-                    $(this).html("Снять выделение");
 
+                    $(this).html("Снять выделение");
                 } else {
+
                     $("input[type='checkbox']").removeAttr("checked");
+
                     $(this).attr({
                         "selected": false
                     });
-                     $(this).html("Выбрать всё");
+
+                    $(this).html("Выбрать всё");
 
                 }
+
+                var selected_count = 0;
+                $("input[type='checkbox']").each(function(i, el) {
+                    if ($(el).is(':checked'))
+                        selected_count++;
+                });
+
+                $(".count_select").html("Выбрано:" + selected_count);
 
             });
 
 
             $("#append_emails").click(function() {
                 var emails = $("#emails").val().split(",");
-                
+
                 for (var key in emails) {
-                    
-                    
-                    var mail = emails[key].indexOf(":")>=0?emails[key].split(":")[0]:emails[key];
-                    var name = emails[key].indexOf(":")>=0?emails[key].split(":")[1]:"NoName";
-                    
+
+
+                    var mail = emails[key].indexOf(":") >= 0 ? emails[key].split(":")[0] : emails[key];
+                    var name = emails[key].indexOf(":") >= 0 ? emails[key].split(":")[1] : "NoName";
+
                     if (validateEmail(mail.trim()) == false) {
                         $("p.message").prepend("Ошибка в email " + mail);
                         $("p.message").removeClass("success").addClass("error");
                     }
                     if (mail.trim() != "" && validateEmail(mail.trim())) {
-                        $(".users form ul").prepend("<li class='new-elem'><input type='checkbox' checked='true' value='" + mail.trim() + "' name='pay_mail[]' >" + mail.trim() + "["+name.trim()+"]</li>");
+                        $(".users form ul").prepend("<li class='new-elem'><input type='checkbox' checked='true' value='" + mail.trim() + "' name='pay_mail[]' >" + mail.trim() + "[" + name.trim() + "]</li>");
 
                         $("#emails").val("");
                         $("p.message").html("Адреса успешно добавлены!");
@@ -208,12 +262,9 @@
                         $.post("<?php echo plugin_dir_url( __FILE__ ).'updatebd.php';?>", {
                                 "mail": mail,
                                 "name": name
-                                
+
                             },
-                            function(a,b) {
-                                console.log(a);
-                             console.log(b);
-                            });
+                            function(a, b) {});
                     }
                 }
 
@@ -223,12 +274,8 @@
                 }, 5000);
             });
 
-
-
             $("form").on("submit", function(event) {
-
                 event.preventDefault();
-
                 $("p.message").html("");
                 $("p.message").removeClass("success").removeClass("error");
                 $(".progress").removeClass("hide");
@@ -247,44 +294,51 @@
                 });
                 $(".progress p").html(progress_current + "\\" + progress_max);
 
-                console.log($(this).serialize());
-                $.post("<?php echo plugin_dir_url( __FILE__ ).'mail.php';?>",
-                    $(this).serialize(),
-                    function(a, b) {
+                $("input[type='checkbox']").each(function(i, el) {
+                    if ($(el).is(':checked')) {
+                        $.post("<?php echo plugin_dir_url( __FILE__ ).'mail2.php';?>", {
+                                pay_mail: $(el).val(),
+                                message: $("[name='message']").val(),
+                                subject: $("[name='subject']").val()
+                            },
+                            function(a, b) {
 
-                        switch (a) {
-                            case "success":
-                                $("p.message").html("Успешно отправлено!");
-                                $("p.message").removeClass("error").addClass("success");
-                                break;
+                                switch (a) {
 
-                            case "error":
-                                $("p.message").html("Ошибка отправки:(");
-                                $("p.message").removeClass("success").addClass("error");
-                                break;
-                            default:
-                                $("p.message").html("Успешно отправлено!");
-                                $("p.message").removeClass("error").addClass("success");
-                                
-                                progress_current=parseInt(a.charAt(a.length-1));
-                                $(".progress .line").css({
-                                    "width": Math.round((parseInt(a) / progress_max) * 100) + "%"
-                                });
-                                $(".progress p").html(progress_current + "\\" + progress_max);
-                                break;
+                                    case "error":
+                                        $("p.message").html("Ошибка отправки:(");
+                                        $("p.message").removeClass("success").addClass("error");
+                                        break;
+                                    case "success":
+                                    default:
+                                        $("p.message").html("Успешно отправлено!");
+                                        $("p.message").removeClass("error").addClass("success");
+
+                                        progress_current++;
+                                        $(".progress .line").css({
+                                            "width": Math.round((progress_current / progress_max) * 100) + "%"
+                                        });
+                                        $(".progress p").html(progress_current + "\\" + progress_max);
+                                        break;
+                                }
+
+                                if (progress_current >= progress_max) {
+                                    setTimeout(function() {
+                                        $("p.message").html("");
+                                        $("p.message").removeClass("success").removeClass("error");
+                                        $(".progress").addClass("hide");
+                                        $(".progress .line").css({
+                                            "width": "0%"
+                                        });
+                                    }, 10000);
+
+                                }
+                            });
+                    }
+                });
 
 
-                        }
 
-                        setTimeout(function() {
-                            $("p.message").html("");
-                            $("p.message").removeClass("success").removeClass("error");
-                            $(".progress").addClass("hide");
-
-                        }, 5000);
-
-                        console.log(a);
-                    });
             });
         });
 
